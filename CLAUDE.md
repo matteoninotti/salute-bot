@@ -2,12 +2,12 @@
 
 Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fiscale + NRE). Watches the public booking flow headlessly and **notifies the moment a slot opens**. No auto-booking in the MVP. Multi-user from day one. **Deadline: 2026-07-04.** School project (ITS ICT, Python class).
 
-> This file is a thin pointer + the essentials needed to work in-repo. The old PRD and decision log were **discarded** (drifted out of alignment); both have since been **rebuilt**: the decision log (`salute-bot-log.md` — the live decision record, D1–D33) and the PRD (`salute-bot-prd.md`, rebuilt 2026-07-02 from the log + the feasibility). The log holds the full history + rationale.
+> This file is a thin pointer + the essentials needed to work in-repo. The old PRD and decision log were **discarded** (drifted out of alignment); both have since been **rebuilt**: the decision log (`salute-bot-log.md` — the live decision record, D1–D34) and the PRD (`salute-bot-prd.md`, rebuilt 2026-07-02 from the log + the feasibility). The log holds the full history + rationale.
 
 ## Canonical docs (vault — not in this repo)
 
 - Feasibility (IT, for submission): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-feasibility_v2.md`
-- PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions (D1–D33) + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it.
+- PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions (D1–D34) + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it.
 - Recon + decision log (live history): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-log.md` — **rebuilt 2026-06-15**: §1 recon · §2 decisions · §3 open questions. The single source of truth for specs, architecture, and rationale — CLAUDE.md and the PRD both just point here.
 
 ## How to work here (hard guardrails)
