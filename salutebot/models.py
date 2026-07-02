@@ -59,3 +59,28 @@ class Slot:
         """
         raw = _KEY_SEP.join([self.iso_date, self.time, self.struttura, self.cap or ""])
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class Prestazione:
+    """A prestazione as shown on the CUP ricetta-confirmation page (epPrestazioni).
+
+    Presented during registration / adding a prestazione so the user can confirm
+    the service their NRE unlocks before it is watched (D14).
+
+    Encapsulation exception: same DTO carve-out as `Slot` — an immutable, frozen
+    data-carrier whose public fields are its read-only interface; granted for this
+    specific class, not for data-carriers as a category.
+
+    Fields:
+        code        -- prestazione code, the de-dup grouping key (e.g. "8901.20", D19);
+                       persisted in the `prestazioni` table (D20)
+        descrizione -- regional description (e.g. "VISITA UROLOGICA DI CONTROLLO");
+                       persisted in the `prestazioni` table (D20)
+        quantita    -- how many the ricetta prescribes; ricetta-level info shown only
+                       for the acknowledgment, NOT a `prestazioni` column. None if absent.
+    """
+
+    code: str
+    descrizione: str
+    quantita: int | None

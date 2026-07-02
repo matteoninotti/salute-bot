@@ -18,7 +18,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 
 - [x] `Slot` model + D16 natural key (`iso_date, time, struttura, cap` → sha256 `slot_key`)
 - [x] Slots parser (JSF CDATA extract, structural card parse) + 8 ground-truth tests vs real recon capture
-- [ ] **(M)** Parse the `epPrestazioni` confirmation page (prestazione code + descrizione) for registration acknowledgment — fixture: `recon/epPrestazioni_redacted.xhtml`
+- [x] **(M)** Parse the `epPrestazioni` confirmation page (prestazione code + descrizione) for registration acknowledgment — fixture: `recon/epPrestazioni_redacted.xhtml`
 
 ## Phase 2 — deterministic core (offline-testable)
 
