@@ -84,3 +84,33 @@ class Prestazione:
     code: str
     descrizione: str
     quantita: int | None
+
+
+@dataclass(frozen=True)
+class DetectionResult:
+    """One detector cycle's outcome for a single prestazione (D8, D19/D20, D32).
+
+    Encapsulation exception: same DTO carve-out as `Slot`/`Prestazione` -- an
+    immutable, frozen data-carrier whose public fields are its read-only
+    interface; granted for this specific class, not for data-carriers as a
+    category. Re-evaluated here, not assumed: `DetectionResult` is likewise
+    produced once and handed off read-only to the alert step, so the same
+    reasoning applies.
+
+    Per D32, the alert built from this result must show the full current
+    availability with the new ones highlighted -- never the new ones alone --
+    so both lists are carried, not just the diff:
+        prestazione -- the code this cycle covers (D19: the grouping/de-dup unit)
+        all_slots   -- every slot visible in this scrape, in page order
+        new_slots   -- the subset of `all_slots` that is newly-seen this cycle
+                       (already persisted with `first_seen = now` by the
+                       detector, per D8) -- empty means "nothing to alert on"
+    """
+
+    prestazione: str
+    all_slots: list[Slot]
+    new_slots: list[Slot]
+
+    @property
+    def has_new(self) -> bool:
+        return len(self.new_slots) > 0
