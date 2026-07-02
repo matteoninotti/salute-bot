@@ -22,7 +22,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 
 ## Phase 2 — deterministic core (offline-testable)
 
-- [ ] **(M)** Store: SQLite schema — 4 tables `users`/`targets`/`prestazioni`/`slots` (D20) + `users.checknow_requested_at`/`last_checknow_at` (D26)
+- [x] **(M)** Store: SQLite schema — 4 tables `users`/`targets`/`prestazioni`/`slots` (D20) + `users.checknow_requested_at`/`last_checknow_at` (D26)
 - [x] **(M)** Crypto layer (D29): `cf_hash = HMAC-SHA256(cf, hmac_key)` blind index (PK/FK); `cf_enc`/`nre` AEAD; two separate env keys
 - [ ] **(M)** Detector: per-prestazione dedup (D8/D20) — `new = current − known` in memory, `first_seen` written once, `last_seen` bumped
 - [ ] **(M)** Alert fan-out: `slots(new) → targets → users` join; SES email adapter (D10/D15)
