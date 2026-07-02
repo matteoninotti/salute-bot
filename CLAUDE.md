@@ -2,12 +2,12 @@
 
 Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fiscale + NRE). Watches the public booking flow headlessly and **notifies the moment a slot opens**. No auto-booking in the MVP. Multi-user from day one. **Deadline: 2026-07-04.** School project (ITS ICT, Python class).
 
-> This file is a thin pointer + the essentials needed to work in-repo. The old PRD and decision log were **discarded** (drifted out of alignment); both have since been **rebuilt**: the decision log (`salute-bot-log.md` — the live decision record, D1–D34) and the PRD (`salute-bot-prd.md`, rebuilt 2026-07-02 from the log + the feasibility). The log holds the full history + rationale.
+> This file is a thin pointer + the essentials needed to work in-repo. The old PRD and decision log were **discarded** (drifted out of alignment); both have since been **rebuilt**: the decision log (`salute-bot-log.md` — the live decision record) and the PRD (`salute-bot-prd.md`, rebuilt 2026-07-02 from the log + the feasibility). The log holds the full history + rationale.
 
 ## Canonical docs (vault — not in this repo)
 
 - Feasibility (IT, for submission): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-feasibility_v2.md`
-- PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions (D1–D34) + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it.
+- PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it.
 - Recon + decision log (live history): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-log.md` — **rebuilt 2026-06-15**: §1 recon · §2 decisions · §3 open questions. The single source of truth for specs, architecture, and rationale — CLAUDE.md and the PRD both just point here.
 
 ## How to work here (hard guardrails)
@@ -21,6 +21,7 @@ Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fisc
 - **Secrets (CF/NRE) never appear in chat, code, or logs.** They're persisted **encrypted at rest in SQLite**; the encryption key comes from **env only** (never committed, never stored in the DB).
 - **Don't hard-wrap prose mid-sentence in docs.** No line breaks (`\n`, `<br>`, etc.) within a sentence — break only where structurally needed (after a period, a list item, a new paragraph). Let lines run long; the editor soft-wraps.
 - **Record locked decisions in the log.** Every time a **locked** decision is added or changed, append it to `salute-bot-log.md` §2 under a `### YYYY-MM-DD` heading reflecting the **current date** (a new heading per day; `D#` numbering runs **continuously** across all dates — the next decision after `D13` is `D14`) — never rewrite past entries.
+- **Before citing a `D#` in code/comments/docs, grep/read it in the log itself** — never rely on memory of what it says. The log is the one place drift isn't allowed to happen twice. If that decision leaves something deferred/residual, also check whether a **later** `D#` has since resolved it before treating it as still open.
 - **Keep `TODO.md` in sync at commit time.** Whenever a commit completes or advances a tracked task, check it off (`[x]`) / update its status in `TODO.md` **in that same commit** — the tracker must never lag the code.
 - **Versioning = GitHub flow, one branch per phase.** Do each phase's code on a branch named for it (`phase-N`, matching `TODO.md`); commit at every completed/advanced task (tests green + `TODO.md` synced in that same commit). When the phase is done, merge into `main` with `git merge --no-ff` (keep the phase boundary visible in history). `main` stays releasable. Project-meta changes (CLAUDE.md, guardrails, docs) go straight to `main`, not a phase branch. Merges, pushes, and branch deletion happen on Matteo's say-so — don't push or delete branches unprompted.
 
