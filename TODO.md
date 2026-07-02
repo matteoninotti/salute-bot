@@ -11,8 +11,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 - [x] Align docs (log §3 resolved, feasibility updated, D29 addendum: separate HMAC/AEAD env keys)
 - [x] Rebuild venv on Python 3.14.6, add `requirements.txt` + `pyproject.toml`
 - [x] Guardrails: build-mode, encapsulation (professor req), no `__future__` annotations
-- [ ] **(M)** Config/secrets bootstrap — read `SALUTEBOT_ENC_KEY` + `SALUTEBOT_HMAC_KEY` from env; fail loudly if missing
-- [ ] **(M)** CF/NRE validation helpers (format checks; never log values)
+- [x] **(M)** Config/secrets bootstrap — read `SALUTEBOT_ENC_KEY` + `SALUTEBOT_HMAC_KEY` from env; fail loudly if missing
+- [x] **(M)** CF/NRE validation helpers (format checks; never log values) — NRE format is loose/unverified (no captured form page); tighten once confirmed
 
 ## Phase 1 — parse half (trustworthy, offline)
 
