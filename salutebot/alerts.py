@@ -258,6 +258,27 @@ def render_nre_invalid_notice(code: str, descrizione: str | None = None) -> Emai
     return EmailContent(subject=subject, text=body, html=html)
 
 
+def render_watch_failing_notice(code: str, descrizione: str | None = None) -> EmailContent:
+    """The D11 notice: watching this prestazione has failed N=3 consecutive cycles
+    (~6 min) with transient portal errors, so the user learns the silent watch is
+    currently broken (not that their ricetta is invalid — that is D28's notice)."""
+    what = f"{descrizione} ({code})" if descrizione else code
+    subject = f"salute-bot: problemi temporanei nel monitoraggio di {what}"
+    body = (
+        f"Il monitoraggio della prestazione {what} sta riscontrando ripetuti errori "
+        "tecnici nell'accesso al portale CUP.\n\n"
+        "Continuiamo a riprovare automaticamente. La tua ricetta è ancora valida — "
+        "non devi fare nulla; ti avviseremo appena trovi nuovi posti."
+    )
+    html = (
+        f"<p>Il monitoraggio della prestazione <strong>{escape(what)}</strong> sta "
+        "riscontrando ripetuti errori tecnici nell'accesso al portale CUP.</p>"
+        "<p>Continuiamo a riprovare automaticamente. La tua ricetta è ancora valida "
+        "— non devi fare nulla; ti avviseremo appena trovi nuovi posti.</p>"
+    )
+    return EmailContent(subject=subject, text=body, html=html)
+
+
 def _slot_line(slot: Slot) -> str:
     """One-line human rendering of a slot for the alert body."""
     where = slot.struttura or "?"

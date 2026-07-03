@@ -18,9 +18,15 @@ import os
 import time
 from contextlib import contextmanager
 
-from salutebot.alerts import Mailer, MailerError, fan_out, render_nre_invalid_notice
+from salutebot.alerts import (
+    Mailer,
+    MailerError,
+    fan_out,
+    render_nre_invalid_notice,
+    render_watch_failing_notice,
+)
 from salutebot.detector import detect_new_slots
-from salutebot.scraper.base import NREInvalidError, Scraper, ScrapeError
+from salutebot.scraper.base import NREInvalidError, Scraper, ScrapeError, ScrapeResult
 from salutebot.store import Store
 
 _DEFAULT_LOCK_PATH = "/tmp/salute-bot.lock"
@@ -35,6 +41,14 @@ FLOOR_SECONDS = 120.0
 # it is NOT an invitation to add workers now (extra workers only raise concurrent
 # load on the CUP server, §3).
 WORKER_POOL_SIZE = 1
+
+# Robustness (D11). In-attempt retry with exponential backoff rides out momentary
+# JSF glitches (ViewState/p_auth races) inside one scrape; across sweeps, a
+# prestazione that fails this many CONSECUTIVE cycles (~6 min at the 2-min floor)
+# gets its subscribers a "watching is currently broken" notice.
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_BASE = 1.0
+FAILURE_NOTIFY_THRESHOLD = 3
 
 
 class DaemonAlreadyRunningError(RuntimeError):
@@ -69,21 +83,23 @@ def single_instance_lock(lock_path: str = _DEFAULT_LOCK_PATH):
 
 
 def process_prestazione(
-    store: Store, scraper: Scraper, mailer: Mailer, code: str, now: float
+    store: Store, scraper: Scraper, mailer: Mailer, code: str, now: float,
+    *, sleep=time.sleep,
 ) -> str:
     """Scrape one prestazione and process its result (N=1, D27). Returns a status.
 
     Drives from the **first active target** (D28), rotating on a permanent
     `NREInvalidError`: the dead target is deactivated, its owner emailed, and the
     **next** active subscriber's NRE is tried — until one works, a transient error
-    stops the attempt, or none remain and the prestazione is **dormant** (D28).
+    stops the attempt, or none remain and the prestazione is **dormant** (D28). Each
+    scrape rides out momentary JSF glitches via in-attempt retry + backoff (D11).
 
     Politeness (D22): the attempt is marked (`last_scrape_at = now`) once, before the
     first scrape, so a failure/crash still counts against the 2-min floor and the
     loop can never busy-scrape a broken prestazione. A prestazione with no active
-    credential at all is dormant and marks nothing. A transient `ScrapeError` is not
-    acted on here — retry/backoff is D11; the floor governs its cadence. On success,
-    detection (D8) + fan-out (D32/D36) run.
+    credential at all is dormant and marks nothing. On success, detection (D8) +
+    fan-out (D32/D36) run. The `transient_error` status feeds the across-sweep
+    consecutive-failure counter in `run_sweep` (N=3 → notify, D11).
     """
     marked = False
     while True:
@@ -95,7 +111,7 @@ def process_prestazione(
             marked = True
         cf, nre = credential
         try:
-            result = scraper.scrape(cf, nre)
+            result = _scrape_with_retry(scraper, cf, nre, sleep)
         except NREInvalidError:
             # Permanent: this ricetta is dead. Deactivate it, tell its owner, and
             # rotate to the next active subscriber (D28). The loop terminates because
@@ -104,11 +120,29 @@ def process_prestazione(
             _notify_nre_invalid(store, mailer, cf, code)
             continue
         except ScrapeError:
-            return "transient_error"
+            return "transient_error"  # retries exhausted this cycle (D11)
         detection = detect_new_slots(store, code, result.slots, now)
         if detection.has_new:
             fan_out(store, mailer, detection, now)
         return "ok"
+
+
+def _scrape_with_retry(scraper: Scraper, cf: str, nre: str, sleep) -> ScrapeResult:
+    """One scrape with in-attempt retry + exponential backoff on transient errors (D11).
+
+    A permanent `NREInvalidError` is NOT retried — it propagates immediately so the
+    caller can rotate (D28). A `ScrapeError` is retried up to `RETRY_ATTEMPTS` times
+    with backoff, then re-raised for the caller to count as a failed cycle."""
+    delay = RETRY_BACKOFF_BASE
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            return scraper.scrape(cf, nre)
+        except ScrapeError:
+            if attempt == RETRY_ATTEMPTS - 1:
+                raise
+            sleep(delay)
+            delay *= 2
+    raise AssertionError("unreachable: RETRY_ATTEMPTS must be >= 1")
 
 
 def _notify_nre_invalid(store: Store, mailer: Mailer, cf: str, code: str) -> None:
@@ -126,14 +160,48 @@ def _notify_nre_invalid(store: Store, mailer: Mailer, cf: str, code: str) -> Non
         pass
 
 
-def run_sweep(store: Store, scraper: Scraper, mailer: Mailer, now: float) -> None:
+def run_sweep(
+    store: Store, scraper: Scraper, mailer: Mailer, now: float,
+    *, failure_counts: dict[str, int] | None = None, sleep=time.sleep,
+) -> None:
     """One pass over the non-dormant prestazioni (D19/D21): scrape each one that is
     **due** under the 2-min floor (D22), one at a time (D27). Prestazioni scraped
-    within the floor are left as-is (their stored slots stand)."""
+    within the floor are left as-is (their stored slots stand).
+
+    `failure_counts` (owned by `run`, passed in so it persists across sweeps) tracks
+    consecutive transient failures per prestazione: at `FAILURE_NOTIFY_THRESHOLD`
+    (~6 min) the subscribers are told watching is currently broken; a success resets
+    the count (D11)."""
+    counts = failure_counts if failure_counts is not None else {}
     for row in store.non_dormant_prestazioni():
         last = row["last_scrape_at"]
         if last is None or (now - last) >= FLOOR_SECONDS:
-            process_prestazione(store, scraper, mailer, row["code"], now)
+            code = row["code"]
+            status = process_prestazione(store, scraper, mailer, code, now, sleep=sleep)
+            _record_cycle_outcome(store, mailer, counts, code, status)
+
+
+def _record_cycle_outcome(
+    store: Store, mailer: Mailer, counts: dict[str, int], code: str, status: str
+) -> None:
+    """Update the consecutive-failure counter and notify at the threshold (D11)."""
+    if status == "transient_error":
+        counts[code] = counts.get(code, 0) + 1
+        if counts[code] == FAILURE_NOTIFY_THRESHOLD:
+            _notify_watch_failing(store, mailer, code)
+    else:  # ok / dormant — the streak of transient failures is broken
+        counts.pop(code, None)
+
+
+def _notify_watch_failing(store: Store, mailer: Mailer, code: str) -> None:
+    """Tell a prestazione's active subscribers that watching is currently failing (D11).
+    Best-effort per recipient; a failed notice must not break the sweep."""
+    notice = render_watch_failing_notice(code, store.prestazione_descrizione(code))
+    for email in store.subscriber_emails(code):
+        try:
+            mailer.send(email, notice)
+        except MailerError:
+            pass
 
 
 def seconds_until_next_due(store: Store, now: float) -> float | None:
@@ -167,8 +235,12 @@ def run(
     instance flock for its whole life (D27), sweeps, then sleeps exactly until the
     next prestazione is due — no fixed timer (D21). Runs until interrupted; `clock`
     and `sleep` are injected so the cadence is testable without real time."""
+    # Consecutive-failure counts persist across sweeps for the whole daemon life
+    # (D11). In-memory, like D26's in-flight set: a crash resets them, which is
+    # harmless (systemd restarts, and the streak simply restarts too).
+    failure_counts: dict[str, int] = {}
     with single_instance_lock(lock_path):
         while True:
-            run_sweep(store, scraper, mailer, clock())
+            run_sweep(store, scraper, mailer, clock(), failure_counts=failure_counts, sleep=sleep)
             wait = seconds_until_next_due(store, clock())
             sleep(FLOOR_SECONDS if wait is None else wait)

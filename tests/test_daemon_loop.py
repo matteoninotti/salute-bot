@@ -10,7 +10,9 @@ from cryptography.fernet import Fernet
 
 from salutebot.crypto import Crypto
 from salutebot.daemon import (
+    FAILURE_NOTIFY_THRESHOLD,
     FLOOR_SECONDS,
+    RETRY_ATTEMPTS,
     process_prestazione,
     run,
     run_sweep,
@@ -120,13 +122,73 @@ def test_dormant_prestazione_is_skipped_without_marking_attempt(store):
     assert _last_scrape_at(store, _CODE) is None
 
 
-def test_transient_error_marks_attempt_and_stops(store):
-    # D22: the floor must throttle attempts, so last_scrape_at advances even on error.
-    status = process_prestazione(store, _FakeScraper(raises=ScrapeError("x")),
-                                 _FakeMailer(), _CODE, now=2000.0)
+def test_transient_error_retries_with_backoff_then_marks_and_stops(store):
+    # D11 in-attempt retry; D22 floor still advances despite the failure.
+    slept: list[float] = []
+    scraper = _FakeScraper(raises=ScrapeError("x"))
+    status = process_prestazione(store, scraper, _FakeMailer(), _CODE, now=2000.0,
+                                 sleep=slept.append)
     assert status == "transient_error"
-    assert store.get_user_targets(_CF)[0]["active"] == 1  # transient != deactivation
+    assert len(scraper.calls) == RETRY_ATTEMPTS          # retried, not given up at once
+    assert len(slept) == RETRY_ATTEMPTS - 1              # backoff between attempts
+    assert slept == sorted(slept) and slept[0] < slept[-1]  # exponential (increasing)
+    assert store.get_user_targets(_CF)[0]["active"] == 1    # transient != deactivation
     assert _last_scrape_at(store, _CODE) == 2000.0
+
+
+def test_retry_recovers_if_a_later_attempt_succeeds(store):
+    # A scraper that fails once then succeeds -> no transient_error surfaces.
+    class _FlakyScraper:
+        def __init__(self):
+            self.calls = 0
+
+        def scrape(self, cf, nre):
+            self.calls += 1
+            if self.calls == 1:
+                raise ScrapeError("blip")
+            return ScrapeResult(_PREST, [_slot()])
+
+    scraper = _FlakyScraper()
+    status = process_prestazione(store, scraper, _FakeMailer(), _CODE, now=1000.0,
+                                 sleep=lambda _s: None)
+    assert status == "ok"
+    assert scraper.calls == 2
+
+
+# ----- N=3 consecutive-failure notice (D11) -----
+
+def _fail_sweeps(store, scraper, mailer, counts, times):
+    for now in times:
+        run_sweep(store, scraper, mailer, now, failure_counts=counts, sleep=lambda _s: None)
+
+
+def test_three_consecutive_failures_notify_subscribers_once(store):
+    counts: dict[str, int] = {}
+    scraper = _FakeScraper(raises=ScrapeError("x"))
+    mailer = _FakeMailer()
+    # Three due sweeps spaced by the floor (~6 min), each fails after retries.
+    _fail_sweeps(store, scraper, mailer, counts,
+                 [1000.0, 1000.0 + FLOOR_SECONDS, 1000.0 + 2 * FLOOR_SECONDS])
+    assert counts[_CODE] == FAILURE_NOTIFY_THRESHOLD
+    assert len(mailer.sent) == 1                      # notified once, at the threshold
+    addr, notice = mailer.sent[0]
+    assert addr == "a@b.it" and "problemi temporanei" in notice.subject
+
+
+def test_failures_below_threshold_do_not_notify(store):
+    counts: dict[str, int] = {}
+    mailer = _FakeMailer()
+    _fail_sweeps(store, _FakeScraper(raises=ScrapeError("x")), mailer, counts,
+                 [1000.0, 1000.0 + FLOOR_SECONDS])       # only 2 failures
+    assert counts[_CODE] == 2
+    assert mailer.sent == []
+
+
+def test_a_success_resets_the_failure_streak(store):
+    counts = {_CODE: 2}
+    run_sweep(store, _FakeScraper(ScrapeResult(_PREST, [_slot()])), _FakeMailer(),
+              now=1000.0, failure_counts=counts, sleep=lambda _s: None)
+    assert _CODE not in counts
 
 
 # ----- representative-NRE rotation (D28) -----
