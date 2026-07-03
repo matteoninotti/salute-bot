@@ -237,6 +237,27 @@ def render_alert(result: DetectionResult) -> EmailContent:
 
 
 
+def render_nre_invalid_notice(code: str, descrizione: str | None = None) -> EmailContent:
+    """The D28 owner notice: the user's ricetta/NRE is permanently invalid, so their
+    scrape can no longer run — they must re-add a fresh one. Sent to that one owner,
+    not fanned out; Italian, matching the message wording D28 specifies."""
+    what = f"{descrizione} ({code})" if descrizione else code
+    subject = f"salute-bot: la tua ricetta per {what} non è più valida"
+    body = (
+        f"La ricetta (NRE) che avevi inserito per {what} non è più valida "
+        "— è scaduta, già utilizzata, o non più riconosciuta dal CUP.\n\n"
+        "Per continuare a ricevere notifiche su questa prestazione, reinserisci "
+        "una nuova ricetta valida."
+    )
+    html = (
+        f"<p>La ricetta (NRE) che avevi inserito per <strong>{escape(what)}</strong> "
+        "non è più valida — è scaduta, già utilizzata, o non più riconosciuta dal CUP.</p>"
+        "<p>Per continuare a ricevere notifiche su questa prestazione, "
+        "reinserisci una nuova ricetta valida.</p>"
+    )
+    return EmailContent(subject=subject, text=body, html=html)
+
+
 def _slot_line(slot: Slot) -> str:
     """One-line human rendering of a slot for the alert body."""
     where = slot.struttura or "?"

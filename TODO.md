@@ -32,7 +32,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 - [x] **(M)** Scraper seam (Protocol + `ScrapeResult` + typed `NREInvalidError` vs transient `ScrapeError`) so the daemon is testable with a fake before the Phase 4 drive exists (D5/D14/D28)
 - [x] **(M)** `flock` single-instance guard (D27); systemd-friendly long-running process
 - [x] **(M)** Self-clocking serial loop (D21/D22/D27): non-dormant sweep, N=1, 2-min per-prestazione floor (advances on every *attempt* so a failing scrape can't busy-loop), scrape→detect→fan-out; sleeps exactly until next-due
-- [ ] **(M)** Representative-NRE lifecycle (D28): first active target drives; rotate on permanent NRE-invalid; email owner; prestazione dormant if none valid
+- [x] **(M)** Representative-NRE lifecycle (D28): first active target drives; rotate on permanent NRE-invalid (deactivate + email owner in Italian), retry next subscriber; prestazione dormant if none valid
 - [ ] **(M)** Robustness: retry + backoff on JSF errors, N=3 consecutive fails → notify user; dead-man alert (D11)
 - [ ] **(M)** `--check-now` end-to-end (D24/D26/D25): CLI-owned cooldown + block-poll; daemon serving via the two `users` timestamps; two-tier queue (check-now lane ahead of sweep) + per-prestazione coalescing (D25)  _(moved from Phase 2 — needs the daemon)_
 - [ ] **(M)** New-user registration + add-prestazione (D14): daemon-driven acknowledgment scrape (NRE→prestazione + initial slots); pin the CLI→daemon request mechanism  _(moved from Phase 2 — needs the daemon, D27)_

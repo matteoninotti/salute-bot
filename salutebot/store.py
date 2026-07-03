@@ -143,6 +143,11 @@ class Store:
             return None
         return self.__crypto.decrypt(row["cf_enc"]), self.__crypto.decrypt(row["nre_enc"])
 
+    def prestazione_descrizione(self, code: str) -> str | None:
+        """The human-readable name of a prestazione (for the D28 owner notice)."""
+        row = self.__row("SELECT descrizione FROM prestazioni WHERE code = ?", (code,))
+        return row["descrizione"] if row else None
+
     def non_dormant_prestazioni(self) -> list[dict]:
         """Prestazioni the loop should consider this sweep: those with >=1 active
         target (dormant ones — zero active NREs — are excluded, D28). Each row is

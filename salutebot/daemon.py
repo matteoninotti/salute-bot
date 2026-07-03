@@ -18,7 +18,7 @@ import os
 import time
 from contextlib import contextmanager
 
-from salutebot.alerts import Mailer, fan_out
+from salutebot.alerts import Mailer, MailerError, fan_out, render_nre_invalid_notice
 from salutebot.detector import detect_new_slots
 from salutebot.scraper.base import NREInvalidError, Scraper, ScrapeError
 from salutebot.store import Store
@@ -73,31 +73,57 @@ def process_prestazione(
 ) -> str:
     """Scrape one prestazione and process its result (N=1, D27). Returns a status.
 
-    Order matters for politeness (D22): the attempt is marked (`last_scrape_at = now`)
-    **before** scraping, so a failure or crash still counts against the 2-min floor
-    and the loop can never busy-scrape a broken prestazione. A dormant prestazione
-    (no active credential, D28) is skipped without marking an attempt.
+    Drives from the **first active target** (D28), rotating on a permanent
+    `NREInvalidError`: the dead target is deactivated, its owner emailed, and the
+    **next** active subscriber's NRE is tried — until one works, a transient error
+    stops the attempt, or none remain and the prestazione is **dormant** (D28).
 
-    Errors are only *classified* here, not yet acted on: rotation on a permanent
-    `NREInvalidError` is D28 (next module) and retry/backoff on a transient
-    `ScrapeError` is D11 — for now both just end the attempt, so the floor governs
-    the retry cadence. On success, detection (D8) + fan-out (D32/D36) run.
+    Politeness (D22): the attempt is marked (`last_scrape_at = now`) once, before the
+    first scrape, so a failure/crash still counts against the 2-min floor and the
+    loop can never busy-scrape a broken prestazione. A prestazione with no active
+    credential at all is dormant and marks nothing. A transient `ScrapeError` is not
+    acted on here — retry/backoff is D11; the floor governs its cadence. On success,
+    detection (D8) + fan-out (D32/D36) run.
     """
-    credential = store.representative_credential(code)
-    if credential is None:
-        return "dormant"
-    store.set_last_scrape_at(code, now)
-    cf, nre = credential
+    marked = False
+    while True:
+        credential = store.representative_credential(code)
+        if credential is None:
+            return "dormant"  # no active NRE left (or ever) — skip until one is added
+        if not marked:
+            store.set_last_scrape_at(code, now)
+            marked = True
+        cf, nre = credential
+        try:
+            result = scraper.scrape(cf, nre)
+        except NREInvalidError:
+            # Permanent: this ricetta is dead. Deactivate it, tell its owner, and
+            # rotate to the next active subscriber (D28). The loop terminates because
+            # each pass deactivates one target, so the active set strictly shrinks.
+            store.deactivate_target(cf, code)
+            _notify_nre_invalid(store, mailer, cf, code)
+            continue
+        except ScrapeError:
+            return "transient_error"
+        detection = detect_new_slots(store, code, result.slots, now)
+        if detection.has_new:
+            fan_out(store, mailer, detection, now)
+        return "ok"
+
+
+def _notify_nre_invalid(store: Store, mailer: Mailer, cf: str, code: str) -> None:
+    """Email the owner of a just-deactivated target that their ricetta is dead (D28).
+
+    Best-effort: a failed notice must not stop rotation (keeping the scrape alive for
+    the other subscribers is the priority); broader failure signalling is D11."""
+    email = store.get_email(cf)
+    if email is None:
+        return
+    notice = render_nre_invalid_notice(code, store.prestazione_descrizione(code))
     try:
-        result = scraper.scrape(cf, nre)
-    except NREInvalidError:
-        return "nre_invalid"
-    except ScrapeError:
-        return "transient_error"
-    detection = detect_new_slots(store, code, result.slots, now)
-    if detection.has_new:
-        fan_out(store, mailer, detection, now)
-    return "ok"
+        mailer.send(email, notice)
+    except MailerError:
+        pass
 
 
 def run_sweep(store: Store, scraper: Scraper, mailer: Mailer, now: float) -> None:

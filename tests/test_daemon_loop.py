@@ -21,6 +21,9 @@ from salutebot.scraper.base import NREInvalidError, ScrapeError, ScrapeResult
 from salutebot.store import Store
 
 _CF = "RSSMRA85T10A562S"
+_NRE_A = "1111111111111111"
+_CF_B = "BNCLGU80A01L219T"
+_NRE_B = "2222222222222222"
 _CODE = "8901.20"
 _PREST = Prestazione(code=_CODE, descrizione="VISITA UROLOGICA DI CONTROLLO", quantita=1)
 
@@ -46,6 +49,22 @@ class _FakeScraper:
         return self.__result
 
 
+class _RotatingScraper:
+    """Raises NREInvalidError for NREs in `dead`, returns `result` otherwise —
+    lets tests drive D28 rotation across subscribers."""
+
+    def __init__(self, dead, result=None):
+        self.__dead = set(dead)
+        self.__result = result if result is not None else ScrapeResult(_PREST, [_slot()])
+        self.calls: list[tuple[str, str]] = []
+
+    def scrape(self, cf, nre):
+        self.calls.append((cf, nre))
+        if nre in self.__dead:
+            raise NREInvalidError("expired")
+        return self.__result
+
+
 class _FakeMailer:
     def __init__(self):
         self.sent = []
@@ -59,7 +78,7 @@ def store():
     crypto = Crypto(Fernet.generate_key().decode("ascii"), "hmac-secret")
     with Store(":memory:", crypto) as s:
         s.add_user(_CF, "a@b.it")
-        s.add_target(_CF, _PREST, "1111111111111111")
+        s.add_target(_CF, _PREST, _NRE_A)
         yield s
 
 
@@ -76,7 +95,7 @@ def test_scrape_drives_detection_and_fan_out(store):
     mailer = _FakeMailer()
     status = process_prestazione(store, scraper, mailer, _CODE, now=1000.0)
     assert status == "ok"
-    assert scraper.calls == [(_CF, "1111111111111111")]  # decrypted credential (D28/D29)
+    assert scraper.calls == [(_CF, _NRE_A)]  # decrypted credential (D28/D29)
     assert store.known_slot_keys(_CODE) == {_slot().slot_key}  # persisted post-send (D36)
     assert len(mailer.sent) == 1  # subscriber alerted (D20)
     assert _last_scrape_at(store, _CODE) == 1000.0
@@ -101,15 +120,57 @@ def test_dormant_prestazione_is_skipped_without_marking_attempt(store):
     assert _last_scrape_at(store, _CODE) is None
 
 
-def test_attempt_is_marked_before_a_failing_scrape(store):
+def test_transient_error_marks_attempt_and_stops(store):
     # D22: the floor must throttle attempts, so last_scrape_at advances even on error.
-    for raises, expected in [(ScrapeError("x"), "transient_error"),
-                             (NREInvalidError("x"), "nre_invalid")]:
-        store.set_last_scrape_at(_CODE, now=0.0)  # reset
-        status = process_prestazione(store, _FakeScraper(raises=raises), _FakeMailer(),
-                                     _CODE, now=2000.0)
-        assert status == expected
-        assert _last_scrape_at(store, _CODE) == 2000.0  # marked despite failure
+    status = process_prestazione(store, _FakeScraper(raises=ScrapeError("x")),
+                                 _FakeMailer(), _CODE, now=2000.0)
+    assert status == "transient_error"
+    assert store.get_user_targets(_CF)[0]["active"] == 1  # transient != deactivation
+    assert _last_scrape_at(store, _CODE) == 2000.0
+
+
+# ----- representative-NRE rotation (D28) -----
+
+def test_dead_nre_rotates_to_next_subscriber(store):
+    store.add_user(_CF_B, "b@b.it")
+    store.add_target(_CF_B, _PREST, _NRE_B)  # second subscriber, valid NRE
+    scraper = _RotatingScraper(dead={_NRE_A})  # A's ricetta is dead
+    mailer = _FakeMailer()
+
+    status = process_prestazione(store, scraper, mailer, _CODE, now=1000.0)
+
+    assert status == "ok"
+    assert scraper.calls == [(_CF, _NRE_A), (_CF_B, _NRE_B)]  # tried A, rotated to B
+    assert store.get_user_targets(_CF)[0]["active"] == 0   # A deactivated (D28)
+    assert store.get_user_targets(_CF_B)[0]["active"] == 1  # B still active
+    # A got the ricetta-invalid notice; B got the slot alert (active subscriber only).
+    by_addr = {addr: content for addr, content in mailer.sent}
+    assert "non è più valida" in by_addr["a@b.it"].subject
+    assert "nuovo posto" in by_addr["b@b.it"].subject
+    assert store.known_slot_keys(_CODE) == {_slot().slot_key}
+
+
+def test_all_dead_nres_make_prestazione_dormant(store):
+    store.add_user(_CF_B, "b@b.it")
+    store.add_target(_CF_B, _PREST, _NRE_B)
+    scraper = _RotatingScraper(dead={_NRE_A, _NRE_B})  # every subscriber's NRE dead
+    mailer = _FakeMailer()
+
+    status = process_prestazione(store, scraper, mailer, _CODE, now=1000.0)
+
+    assert status == "dormant"
+    assert store.get_user_targets(_CF)[0]["active"] == 0
+    assert store.get_user_targets(_CF_B)[0]["active"] == 0
+    assert {addr for addr, _ in mailer.sent} == {"a@b.it", "b@b.it"}  # both owners told
+    assert store.known_slot_keys(_CODE) == set()  # never succeeded, nothing recorded
+    assert _last_scrape_at(store, _CODE) == 1000.0  # attempt still marked (D22)
+
+
+def test_single_dead_nre_goes_dormant_and_deactivates(store):
+    status = process_prestazione(store, _RotatingScraper(dead={_NRE_A}),
+                                 _FakeMailer(), _CODE, now=2000.0)
+    assert status == "dormant"
+    assert store.get_user_targets(_CF)[0]["active"] == 0
 
 
 # ----- run_sweep + the floor -----
