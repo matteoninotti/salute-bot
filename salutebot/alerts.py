@@ -122,7 +122,8 @@ class SesMailer:
         # botocore generates `send_email` dynamically, so the client doesn't
         # statically satisfy SesClient though it does at runtime -- cast at this one
         # boto3 boundary rather than weaken the Protocol that keeps `send` type-safe.
-        return cls(sender, cast(SesClient, boto3.client("ses", **kwargs)))
+        client = cast(SesClient, boto3.client("ses", **kwargs))
+        return cls(sender, client)
 
     def send(self, to_addr: str, content: EmailContent) -> None:
         try:
