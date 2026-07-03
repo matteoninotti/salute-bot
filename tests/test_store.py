@@ -29,6 +29,8 @@ def _slot(iso_date="2026-06-22", time_="16:00", struttura="POLIAMBULATORIO MONGI
 
 
 _PREST = Prestazione(code="8901.20", descrizione="VISITA UROLOGICA DI CONTROLLO", quantita=1)
+_PREST2 = Prestazione(code="7001.10", descrizione="ECOGRAFIA", quantita=1)
+_PREST3 = Prestazione(code="5001.30", descrizione="VISITA CARDIOLOGICA", quantita=1)
 
 
 @pytest.fixture
@@ -100,18 +102,42 @@ def test_add_target_without_user_violates_fk(store):
         store.add_target(_CF, _PREST, _NRE)
 
 
-def test_representative_nre_is_first_active_decrypted(store):
+def test_representative_credential_is_first_active_decrypted(store):
     store.add_user(_CF, "a@b.it")
     store.add_target(_CF, _PREST, _NRE)
-    assert store.representative_nre(_PREST.code) == _NRE
+    assert store.representative_credential(_PREST.code) == (_CF, _NRE)
 
 
-def test_representative_nre_none_when_all_inactive(store):
+def test_representative_credential_none_when_all_inactive(store):
     store.add_user(_CF, "a@b.it")
     store.add_target(_CF, _PREST, _NRE)
     store.deactivate_target(_CF, _PREST.code)
-    assert store.representative_nre(_PREST.code) is None
+    assert store.representative_credential(_PREST.code) is None
     assert store.get_user_targets(_CF)[0]["active"] == 0
+
+
+def test_non_dormant_prestazioni_excludes_zero_active_and_orders_overdue_first(store):
+    store.add_user(_CF, "a@b.it")
+    store.add_target(_CF, _PREST, _NRE)             # 8901.20 — never scraped
+    store.add_target(_CF, _PREST2, "9999888877776666")  # 7001.10 — scraped recently
+    store.set_last_scrape_at(_PREST2.code, now=5000.0)
+    store.add_user(_CF2, "c@d.it")
+    store.add_target(_CF2, _PREST3, "1231231231231231")
+    store.deactivate_target(_CF2, _PREST3.code)     # dormant — excluded
+    rows = store.non_dormant_prestazioni()
+    codes = [r["code"] for r in rows]
+    assert codes == [_PREST.code, _PREST2.code]     # never-scraped first, then oldest
+    assert _PREST3.code not in codes
+
+
+def test_set_last_scrape_at_advances_the_floor_marker(store):
+    store.add_user(_CF, "a@b.it")
+    store.add_target(_CF, _PREST, _NRE)
+    store.set_last_scrape_at(_PREST.code, now=1234.0)
+    row = store._Store__conn.execute(
+        "SELECT last_scrape_at FROM prestazioni WHERE code = ?", (_PREST.code,)
+    ).fetchone()
+    assert row["last_scrape_at"] == 1234.0
 
 
 def test_subscriber_emails_are_active_watchers(store):

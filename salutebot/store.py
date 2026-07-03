@@ -126,15 +126,45 @@ class Store:
         )
         return [dict(r) for r in rows]
 
-    def representative_nre(self, code: str) -> str | None:
-        """The driver NRE for a scrape: first active subscriber's NRE, decrypted
-        (D28). None when the prestazione has no active target (dormant)."""
+    def representative_credential(self, code: str) -> tuple[str, str] | None:
+        """The `(cf, nre)` credential that drives a scrape of this prestazione (D28):
+        the **first active target** (by insertion order), with both the owner's CF
+        and the target's NRE decrypted in memory (D29 — the scrape needs the literal
+        CF+NRE). None when the prestazione has no active target (dormant, D28).
+
+        Returns plaintext secrets: the caller uses them only to drive the scrape and
+        must never log them (D3)."""
         row = self.__row(
-            "SELECT nre_enc FROM targets WHERE prestazione = ? AND active = 1 "
-            "ORDER BY rowid LIMIT 1",
+            "SELECT u.cf_enc, t.nre_enc FROM targets t JOIN users u ON u.cf_hash = t.user "
+            "WHERE t.prestazione = ? AND t.active = 1 ORDER BY t.rowid LIMIT 1",
             (code,),
         )
-        return self.__crypto.decrypt(row["nre_enc"]) if row else None
+        if row is None:
+            return None
+        return self.__crypto.decrypt(row["cf_enc"]), self.__crypto.decrypt(row["nre_enc"])
+
+    def non_dormant_prestazioni(self) -> list[dict]:
+        """Prestazioni the loop should consider this sweep: those with >=1 active
+        target (dormant ones — zero active NREs — are excluded, D28). Each row is
+        `{code, last_scrape_at}`, ordered never-scraped-first then oldest-scraped, so
+        the loop is fair and picks the most overdue first."""
+        rows = self.__rows(
+            "SELECT p.code, p.last_scrape_at FROM prestazioni p "
+            "WHERE EXISTS (SELECT 1 FROM targets t "
+            "             WHERE t.prestazione = p.code AND t.active = 1) "
+            "ORDER BY p.last_scrape_at IS NOT NULL, p.last_scrape_at",
+            (),
+        )
+        return [dict(r) for r in rows]
+
+    def set_last_scrape_at(self, code: str, now: float) -> None:
+        """Mark a scrape **attempt** of this prestazione (D22 floor throttles the
+        *rate* of scrapes, so this advances on every attempt, success or not — else
+        a failing prestazione would stay 'due' and the loop would hammer the CUP)."""
+        self.__conn.execute(
+            "UPDATE prestazioni SET last_scrape_at = ? WHERE code = ?", (now, code)
+        )
+        self.__conn.commit()
 
     def subscriber_emails(self, code: str) -> list[str]:
         """Emails of the active watchers of a prestazione — the alert fan-out set (D20)."""
