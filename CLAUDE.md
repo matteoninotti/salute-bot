@@ -7,7 +7,7 @@ Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fisc
 ## Canonical docs (vault — not in this repo)
 
 - Feasibility (IT, for submission): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-feasibility_v2.md`
-- PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it.
+- PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it. It is a **bureaucratic/submission artifact**, not a build reference: it is allowed to go stale between periodic realignment passes, and **must never be read as authority for code or architecture** — only `salute-bot-log.md` is.
 - Recon + decision log (live history): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-log.md` — **rebuilt 2026-06-15**: §1 recon · §2 decisions · §3 open questions. The single source of truth for specs, architecture, and rationale — CLAUDE.md and the PRD both just point here.
 
 ## How to work here (hard guardrails)
