@@ -135,6 +135,19 @@ def test_known_slot_keys_and_insert(store):
     assert store.known_slot_keys(_PREST.code) == {s.slot_key}
 
 
+def test_record_new_slots_inserts_batch_with_first_seen(store):
+    store.add_user(_CF, "a@b.it")
+    store.add_target(_CF, _PREST, _NRE)
+    a = _slot("2026-06-22", "16:00")
+    b = _slot("2026-06-24", "14:35")
+    store.record_new_slots(_PREST.code, [a, b], now=1000.0)
+    assert store.known_slot_keys(_PREST.code) == {a.slot_key, b.slot_key}
+    row = store._Store__conn.execute(
+        "SELECT first_seen, last_seen FROM slots WHERE slot_key = ?", (a.slot_key,)
+    ).fetchone()
+    assert row["first_seen"] == row["last_seen"] == 1000.0
+
+
 def test_touch_slot_updates_last_seen_only(store):
     store.add_user(_CF, "a@b.it")
     store.add_target(_CF, _PREST, _NRE)

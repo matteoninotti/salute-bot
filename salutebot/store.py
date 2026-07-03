@@ -126,8 +126,25 @@ class Store:
         return {r["slot_key"] for r in rows}
 
     def insert_slot(self, code: str, slot: Slot, now: float | None = None) -> None:
-        """Record a newly-seen slot with `first_seen = last_seen = now` (D8)."""
+        """Record one newly-seen slot with `first_seen = last_seen = now` (D8)."""
+        self.__insert_slot(code, slot, time.time() if now is None else now)
+        self.__conn.commit()
+
+    def record_new_slots(self, code: str, slots: list[Slot], now: float | None = None) -> None:
+        """Persist a batch of newly-alerted slots in one transaction (D8).
+
+        Called by the alert fan-out **only after a successful send** (at-least-once,
+        D36): if the send fails these rows stay unwritten, so the next sweep
+        re-detects the same keys as new and re-attempts the alert. One commit keeps
+        the batch atomic — a crash mid-batch leaves the un-inserted keys to re-alert
+        next cycle (a bounded duplicate, accepted over a lost alert, D36)."""
         ts = time.time() if now is None else now
+        for slot in slots:
+            self.__insert_slot(code, slot, ts)
+        self.__conn.commit()
+
+    def __insert_slot(self, code: str, slot: Slot, ts: float) -> None:
+        """Insert one slot row — no commit; the caller owns the transaction boundary."""
         self.__conn.execute(
             "INSERT INTO slots (prestazione, slot_key, first_seen, last_seen, "
             "iso_date, time, struttura, cap, prestazione_desc, status, doctor_unit, address) "
@@ -138,7 +155,6 @@ class Store:
                 slot.prestazione_desc, slot.status, slot.doctor_unit, slot.address,
             ),
         )
-        self.__conn.commit()
 
     def touch_slot(self, code: str, slot_key: str, now: float | None = None) -> None:
         """Bump `last_seen` for a still-present slot (never re-alerts, D8)."""
