@@ -46,8 +46,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 
 ## Phase 5 — demo / ship
 
-- [ ] **(M)** Walking skeleton: fake scraper adapter → real detector/store/SES → demoable end-to-end (deadline insurance)
-- [ ] **(M)** Demo/test fixture strategy — scrubbed saved markup, deterministic exam run
+- [x] **(M)** Walking skeleton: fake scraper adapter → real detector/store/SES → demoable end-to-end (deadline insurance) — `salutebot/demo.py` drives the real detector/store/fan-out against `FixtureScraper` + a console mailer (SES swap via `SALUTEBOT_DEMO_SES=1`); `python -m salutebot.demo` (D45)
+- [x] **(M)** Demo/test fixture strategy — scrubbed saved markup, deterministic exam run — `FixtureScraper.from_recon` replays the real redacted recon captures through the production parsers; scripted frames surface the new-slot diff (D8/D32) + the D28 dead-NRE path (D45)
 - [ ] **(M)** Run on Ubuntu amd64 (platform constraint, D12)
 - [ ] **(M)** CI: GitHub ubuntu-amd64 runner + LocalStack; one real-AWS SES smoke to a verified address (D15)
 - [ ] **(S)** systemd service unit (`Restart=always`, D21)
