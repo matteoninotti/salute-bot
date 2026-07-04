@@ -16,14 +16,12 @@ Flow — verified against `recon/flow.har` + the public form DOM:
         the `availableAppointmentsContainer` partial-response with the slots
 
 Outcomes map to the seam's types (`base.py`): a parsed prestazione + slots →
-`ScrapeResult`; any flow/timeout/parse failure → `ScrapeError` (transient, D11).
-`NREInvalidError` is **not raised yet**: the exact invalid-NRE wire signal (D28) is
-unconfirmed, so per the 2026-07-04 decision every failure stays transient until the
-signal is captured from a dead ricetta in the live smoke run (`nreError0`/`cfError`
-are the likely hook — see `_check_invalid_nre`). Parsing reuses the offline-tested
-`parse_prestazione_confirmation` / `parse_available_slots`.
-
-Points still needing the live smoke run are marked `SMOKE-CONFIRM`.
+`ScrapeResult`; the permanent invalid/expired/consumed-ricetta banner → `NREInvalidError`
+(D28 rotation — confirmed live from a dead ricetta: "Impossibile recuperare la ricetta
+dematerializzata", a page-level banner, NOT the field-level error spans); any other
+flow/timeout/parse failure → `ScrapeError` (transient, D11). The proceed→confirmation
+step races the banner against the confirmation so a dead ricetta fails fast. Parsing
+reuses the offline-tested `parse_prestazione_confirmation` / `parse_available_slots`.
 """
 
 import os
@@ -57,6 +55,10 @@ _NEXT_AREA = _P + "appuntamentiForm:nextArea"               # "Estendi area di r
 _WARNING_CONFIRM = _P + "appuntamentiForm:dialogAppuntamentiWarningConfirmButton"
 _SLOTS_CONTAINER = _P + "appuntamentiForm:availableAppointmentsContainer"
 _CONFIRM_ROW = ".prestazioneRow"                             # confirmation parse target (D14)
+# The permanent invalid/expired/consumed-ricetta signal (D28), captured live from a
+# known-dead ricetta: a page-level banner "Impossibile recuperare la ricetta
+# dematerializzata" (NOT the field-level nreError0/cfError spans). Matched by text.
+_INVALID_RICETTA_RE = re.compile(r"impossibile recuperare la ricetta", re.I)
 # "altre disponibilità" is a positional j_idt button (id renumbers per render, HAR
 # source `_t385`), so it is matched by its visible label, not its id (SMOKE-CONFIRM).
 _MORE_AVAIL_RE = re.compile(r"altre disponibilit", re.I)
@@ -150,8 +152,7 @@ class LiveScraper:
 
         page.fill(_sel(_CF_INPUT), cf)
         page.fill(_sel(_NRE_INPUT), nre)
-        self.__proceed_to_confirmation(page)
-        self.__check_invalid_nre(page)                        # no-op until the signal is confirmed
+        self.__proceed_to_confirmation(page)                  # raises NREInvalidError on a dead ricetta
 
         prestazione = parse_prestazione_confirmation(page.content())
         if prestazione is None:
@@ -183,13 +184,25 @@ class LiveScraper:
         page.click(_sel(_SEARCH_BTN))                         # 1st: input-validation pass
         self.__settle(page, _PROCEED_SETTLE_MS)               # let the validation ajax finish
         self.__click_if_present(page, page.locator(_sel(_SEARCH_BTN)))  # 2nd: advance (if still there)
-        try:
-            page.wait_for_selector(_CONFIRM_ROW, timeout=self.__timeout_ms)
-        except PlaywrightTimeoutError:
-            spans = self.__error_spans(page)
-            raise ScrapeError(
-                "confirmation never appeared" + (f" — page said: {spans}" if spans else "")
-            ) from None
+        self.__await_confirmation_or_invalid(page)
+
+    def __await_confirmation_or_invalid(self, page) -> None:
+        """Race the confirmation against the invalid-ricetta banner (D28), so a dead ricetta
+        fails **fast** with the permanent `NREInvalidError` rather than waiting out the full
+        timeout. Whichever appears first wins; if neither does, it's a transient failure."""
+        deadline = time.monotonic() + self.__timeout_ms / 1000
+        while time.monotonic() < deadline:
+            if page.locator(_CONFIRM_ROW).count() > 0:
+                return                                        # advanced to the confirmation
+            if page.get_by_text(_INVALID_RICETTA_RE).count() > 0:
+                self.__log("invalid-ricetta banner detected (D28)")
+                raise NREInvalidError("ricetta dematerializzata non recuperabile "
+                                      "(scaduta, già utilizzata o non valida)")
+            page.wait_for_timeout(400)
+        spans = self.__error_spans(page)
+        raise ScrapeError(
+            "confirmation never appeared" + (f" — page said: {spans}" if spans else "")
+        )
 
     def __error_spans(self, page) -> str:
         """Combined visible text of the form's validation spans (never a CF/NRE value)."""
@@ -254,21 +267,6 @@ class LiveScraper:
         except PlaywrightTimeoutError:
             pass
 
-    def __check_invalid_nre(self, page) -> None:
-        """Hook for the permanent invalid-NRE signal (D28) — DISABLED until confirmed.
-
-        SMOKE-CONFIRM: run this with a known-dead ricetta, read the `nreError0`/`cfError`
-        span text, and, once the exact message is known, raise `NREInvalidError` on it so
-        D28 rotation activates. Until then every failure stays transient (2026-07-04
-        decision), so no ricetta is ever wrongly deactivated.
-
-            err = page.locator(_sel(_NRE_ERROR)).inner_text().strip()
-            if err and <confirmed-invalid-substring> in err.lower():
-                raise NREInvalidError(err)
-        """
-        return
-
-
 def _smoke(argv: list[str] | None = None) -> None:
     """Live smoke run (D-Phase-4): one real scrape, secrets from env or a no-echo prompt,
     printing only the resolved prestazione + slot summary (never the CF/NRE).
@@ -290,6 +288,9 @@ def _smoke(argv: list[str] | None = None) -> None:
     print("avvio del flusso CUP (headless) — può richiedere qualche secondo...")
     try:
         result = LiveScraper.from_env().scrape(cf, nre)
+    except NREInvalidError as err:
+        print(f"ricetta non valida (D28, permanente): {err}")
+        return
     except ScrapeError as err:
         print(f"scraping fallito (temporaneo): {err}")
         return

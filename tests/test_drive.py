@@ -27,6 +27,13 @@ def test_from_env_builds_an_instance_headless_or_headful():
     assert isinstance(LiveScraper.from_env({"SALUTEBOT_HEADFUL": "1"}), LiveScraper)
 
 
+def test_invalid_ricetta_regex_matches_the_live_banner():
+    # The D28 signal, captured live from a dead ricetta (a page-level banner).
+    assert drive._INVALID_RICETTA_RE.search("Impossibile recuperare la ricetta dematerializzata")
+    assert drive._INVALID_RICETTA_RE.search("impossibile recuperare la ricetta")  # case-insensitive
+    assert not drive._INVALID_RICETTA_RE.search("VISITA UROLOGICA DI CONTROLLO - 8901.20")
+
+
 def test_scrape_wraps_unexpected_failures_as_transient(monkeypatch):
     # No browser here: force the Playwright entry to fail and assert it becomes a
     # transient ScrapeError (so the daemon retries, never crashes on the fragile flow).
