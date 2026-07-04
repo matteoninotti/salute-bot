@@ -132,13 +132,35 @@ class LiveScraper:
 
     def __await_confirmation(self, page) -> None:
         """Wait for the epPrestazioni confirmation to render. SMOKE-CONFIRM: recon notes
-        the proceed may take two clicks (the first is an input-validation pass), so a
-        single retry of the visible button is attempted before giving up."""
-        try:
-            page.wait_for_selector(_CONFIRM_ROW, timeout=self.__timeout_ms)
-        except PlaywrightTimeoutError:
-            page.click(_sel(_SEARCH_BTN))                     # second proceed click
-            page.wait_for_selector(_CONFIRM_ROW, timeout=self.__timeout_ms)
+        the proceed may take two clicks (the first is an input-validation pass), so the
+        visible button is retried once before giving up. If it never appears, any text in
+        the `nreError0`/`cfError` spans is surfaced in the error — that message is the
+        likely invalid-NRE signal (D28), so a dead-ricetta smoke run captures it for free."""
+        for attempt in range(2):
+            try:
+                page.wait_for_selector(_CONFIRM_ROW, timeout=self.__timeout_ms)
+                return
+            except PlaywrightTimeoutError:
+                if attempt == 0:
+                    page.click(_sel(_SEARCH_BTN))             # second proceed click
+                    continue
+                spans = self.__error_spans(page)
+                raise ScrapeError(
+                    "confirmation never appeared"
+                    + (f" — page said: {spans}" if spans else "")
+                ) from None
+
+    def __error_spans(self, page) -> str:
+        """Combined visible text of the form's validation spans (never a CF/NRE value)."""
+        parts = []
+        for element_id in (_NRE_ERROR, _CF_ERROR):
+            try:
+                text = page.locator(_sel(element_id)).inner_text(timeout=1000).strip()
+            except Exception:
+                text = ""
+            if text:
+                parts.append(text)
+        return " | ".join(parts)
 
     def __extend_to_widest_area(self, page) -> None:
         """Always advance to the widest search area before harvesting (D17): geo selectors
