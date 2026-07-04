@@ -76,12 +76,12 @@ def test_login_shows_watched_prestazioni(store):
 
 def test_login_unknown_cf_is_rejected(store):
     text = _run(store, ["-u", _UNREGISTERED])
-    assert "No user found" in text
+    assert "Nessun utente trovato" in text
 
 
 def test_login_invalid_cf_format_is_rejected(store):
     text = _run(store, ["-u", "not-a-cf"])
-    assert "CF format invalid" in text
+    assert "Formato CF non valido" in text
 
 
 def test_login_prompts_when_cf_omitted(store):
@@ -99,7 +99,7 @@ def test_list_shows_slots(store):
 
 def test_list_empty_is_friendly(store):
     text = _run(store, ["-u", _CF, "--list"])
-    assert "No slots found yet" in text
+    assert "Nessun posto trovato finora" in text
 
 
 # ----- --disable (menu, D35) -----
@@ -107,7 +107,7 @@ def test_list_empty_is_friendly(store):
 def test_disable_menu_deactivates_picked_target(store):
     store.add_target(_CF, _PREST2, "2222222222222222")
     text = _run(store, ["-u", _CF, "--disable"], read=_scripted("1"))
-    assert "Disabled notifications" in text
+    assert "Notifiche disattivate" in text
     states = {t["code"]: t["active"] for t in store.get_user_targets(_CF)}
     # Targets are ordered by code; "7001.10" sorts before "8901.20".
     assert states["7001.10"] == 0
@@ -121,7 +121,7 @@ def test_disable_menu_cancel_changes_nothing(store):
 
 def test_disable_menu_rejects_out_of_range(store):
     text = _run(store, ["-u", _CF, "--disable"], read=_scripted("9"))
-    assert "Not a valid choice" in text
+    assert "Scelta non valida" in text
     assert store.get_user_targets(_CF)[0]["active"] == 1
 
 
@@ -137,13 +137,13 @@ def test_disable_all_turns_off_every_target(store):
 
 def test_delete_user_requires_matching_cf(store):
     text = _run(store, ["-u", _CF, "--delete-user"], read=_scripted(_CF))
-    assert "permanently deleted" in text
+    assert "cancellati definitivamente" in text
     assert store.user_exists(_CF) is False
 
 
 def test_delete_user_aborts_on_cf_mismatch(store):
     text = _run(store, ["-u", _CF, "--delete-user"], read=_scripted(_CF2))
-    assert "nothing was deleted" in text
+    assert "nulla è stato cancellato" in text
     assert store.user_exists(_CF) is True
 
 
@@ -165,7 +165,7 @@ def test_check_now_queues_then_prints_results_when_served(store):
     main(["-u", _CF, "--check-now"], store=store, read=_scripted(), write=out,
          clock=lambda: 1000.0, sleep=fake_sleep)
 
-    assert "queued" in out.text.lower()
+    assert "coda" in out.text.lower()
     assert "2026-06-22" in out.text and "MONGINEVRO" in out.text  # results after completion
     assert store._Store__conn.execute(
         "SELECT checknow_requested_at FROM users WHERE cf_hash = ?",
@@ -179,8 +179,8 @@ def test_check_now_on_cooldown_prints_only_remaining(store):
     main(["-u", _CF, "--check-now"], store=store, read=_scripted(), write=out,
          clock=lambda: 1100.0, sleep=_boom_sleep)  # 100s later -> 200s remaining
 
-    assert "cooldown" in out.text.lower() and "200s" in out.text
-    assert "queued" not in out.text.lower()  # rejected: no request, no block (D24)
+    assert "pausa" in out.text.lower() and "200s" in out.text
+    assert "coda" not in out.text.lower()  # rejected: no request, no block (D24)
 
 
 # ----- registration + add-prestazione (D14/D40, daemon-driven ack scrape) -----
@@ -221,13 +221,13 @@ def test_new_user_registration_end_to_end(store):
     scraper = _AckScraper(result=ScrapeResult(prest2, [_ecografia_slot()]))
     out = _Writer()
     main([], store=store,
-         read=_scripted(_UNREGISTERED, "new@user.it", "1234567890123456", "y"),
+         read=_scripted(_UNREGISTERED, "new@user.it", "010A31234567890", "y"),
          write=out, clock=lambda: 1000.0, sleep=_daemon_sleep(store, scraper))
     text = out.text
-    assert "Verifying your ricetta" in text
+    assert "Verifica della ricetta" in text
     assert "ECOGRAFIA" in text and "7001.10" in text
     assert "2026-07-01" in text          # initial slot shown for confirmation (D14)
-    assert "now watching" in text
+    assert "ora segui" in text
     assert store.user_exists(_UNREGISTERED)
     targets = store.get_user_targets(_UNREGISTERED)
     assert targets and targets[0]["code"] == "7001.10" and targets[0]["active"] == 1
@@ -236,9 +236,9 @@ def test_new_user_registration_end_to_end(store):
 def test_registration_reject_saves_nothing(store):
     out = _Writer()
     main([], store=store,
-         read=_scripted(_UNREGISTERED, "new@user.it", "1234567890123456", "n"),
+         read=_scripted(_UNREGISTERED, "new@user.it", "010A31234567890", "n"),
          write=out, clock=lambda: 1000.0, sleep=_daemon_sleep(store, _AckScraper()))
-    assert "Nothing was saved" in out.text
+    assert "Nulla è stato salvato" in out.text
     assert store.user_exists(_UNREGISTERED) is False
 
 
@@ -246,15 +246,15 @@ def test_registration_reports_invalid_ricetta(store):
     scraper = _AckScraper(raises=NREInvalidError("expired"))
     out = _Writer()
     main([], store=store,
-         read=_scripted(_UNREGISTERED, "new@user.it", "1234567890123456"),
+         read=_scripted(_UNREGISTERED, "new@user.it", "010A31234567890"),
          write=out, clock=lambda: 1000.0, sleep=_daemon_sleep(store, scraper))
-    assert "isn't valid" in out.text
+    assert "non è valida" in out.text
     assert store.user_exists(_UNREGISTERED) is False
 
 
 def test_registration_rejects_bad_email(store):
     text = _run(store, [], read=_scripted(_UNREGISTERED, "not-an-email"))
-    assert "doesn't look like an email" in text
+    assert "Non sembra un indirizzo email" in text
     assert store.user_exists(_UNREGISTERED) is False
 
 
@@ -263,12 +263,12 @@ def test_existing_user_adds_a_prestazione_from_the_menu(store):
     scraper = _AckScraper(result=ScrapeResult(prest2, [_ecografia_slot()]))
     out = _Writer()
     main([], store=store,
-         read=_scripted(_CF, "9999999999999999", "y"),  # CF, add-NRE, confirm
+         read=_scripted(_CF, "010A39999999999", "y"),  # CF, add-NRE, confirm
          write=out, clock=lambda: 1000.0, sleep=_daemon_sleep(store, scraper))
-    assert "ECOGRAFIA" in out.text and "now watching" in out.text
+    assert "ECOGRAFIA" in out.text and "ora segui" in out.text
     assert {t["code"] for t in store.get_user_targets(_CF)} == {_CODE, "7001.10"}
 
 
 def test_bare_invocation_existing_user_shows_menu_then_offers_add(store):
     text = _run(store, [], read=_scripted(_CF, ""))  # CF, then skip the add prompt
-    assert "Welcome back" in text and _CODE in text
+    assert "Bentornato" in text and _CODE in text

@@ -42,22 +42,23 @@ def test_validate_cf_rejects_malformed(bad_cf):
         validate_cf(bad_cf)
 
 
-def test_validate_nre_accepts_plausible_numeric_code():
-    assert validate_nre("123456789012345") == "123456789012345"
+def test_validate_nre_accepts_a_15char_alphanumeric_code():
+    assert validate_nre("010A31234567890") == "010A31234567890"
 
 
-def test_validate_nre_strips_whitespace():
-    assert validate_nre("  123456  ") == "123456"
+def test_validate_nre_uppercases_and_drops_whitespace():
+    # The ricetta prints the 5-char prefix and 10-digit body spaced + lower-case.
+    assert validate_nre("  010a3 1234567890  ") == "010A31234567890"
 
 
 @pytest.mark.parametrize(
     "bad_nre",
     [
         "",
-        "12345",  # below the 6-char floor
-        "123456789012345678901",  # above the 20-char ceiling
-        "12345A",  # non-numeric
-        "12 345",  # embedded whitespace
+        "1234567890",         # only the 10-digit body (missing the 5-char prefix)
+        "010A3123456789",     # 14 chars (too short)
+        "010A312345678901",   # 16 chars (too long)
+        "010@31234567890",    # illegal character
     ],
 )
 def test_validate_nre_rejects_malformed(bad_nre):

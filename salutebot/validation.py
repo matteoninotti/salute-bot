@@ -39,27 +39,31 @@ def validate_cf(cf: str) -> str:
     """
     normalized = cf.strip().upper()
     if not _CF_RE.match(normalized):
-        raise ValueError("CF format invalid (expected a 16-character Italian Codice Fiscale).")
+        raise ValueError("Formato CF non valido (atteso un Codice Fiscale italiano di 16 caratteri).")
     return normalized
 
 
 # --- NRE ---------------------------------------------------------------------
-# UNVERIFIED FORMAT: the search-form page (with the nreInput0 field's real
-# maxlength/pattern) was never captured in recon -- only the confirmation and
-# slots pages were (see salute-bot-log.md SS3, "NRE box count"). This check is
-# deliberately loose -- numeric, plausible length -- and only rejects obvious
-# non-candidates. Tighten once the exact format is confirmed against a real
-# ricetta (do not paste the value; confirm digit count/charset only).
-_NRE_RE = re.compile(r"^[0-9]{6,20}$")
+# CONFIRMED 2026-07-04 (live smoke run, D42): the CUP form's single NRE box wants
+# the WHOLE 15-character code -- a 5-character alphanumeric prefix + a 10-digit
+# number (e.g. "010A3" + ten digits). Entering only the 10-digit part is rejected
+# by the site ("Numero ricetta elettronica non valido"). Whitespace is dropped (the
+# ricetta prints the two parts spaced) and the value is upper-cased (the form applies
+# text-transform: uppercase). Length/charset kept slightly lenient over the exact
+# 5+10 split until confirmed general across ricette.
+_NRE_RE = re.compile(r"^[0-9A-Z]{15}$")
 
 
 def validate_nre(nre: str) -> str:
-    """Normalize (strip) and loosely validate an NRE.
+    """Normalize (strip whitespace, upper-case) and validate a 15-char NRE.
 
-    Raises ValueError if clearly malformed (empty, non-numeric, implausible
-    length). This is NOT the confirmed spec -- see the module docstring.
+    Raises ValueError if it isn't 15 alphanumeric characters. The value is never
+    logged or echoed (only the rule is named).
     """
-    normalized = nre.strip()
+    normalized = "".join(nre.split()).upper()
     if not _NRE_RE.match(normalized):
-        raise ValueError("NRE format invalid (expected a numeric code).")
+        raise ValueError(
+            "Formato NRE non valido (atteso il codice ricetta completo di 15 caratteri "
+            "— un prefisso di 5 caratteri seguito da 10 cifre)."
+        )
     return normalized

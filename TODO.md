@@ -40,10 +40,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 
 ## Phase 4 — live drive (riskiest, needs valid NRE)
 
-- [ ] **(M)** Scraper drive: Playwright headless Chromium through the stateful JSF flow (GET seed → form → Prosegui ×2 → Avanti → extend area → harvest); live token capture (ViewState/p_auth/ice.\*)
-- [ ] **(M)** Live smoke run (Matteo, local, secrets via env/stdin) — confirm flow still matches June-23 recon
-- [ ] Resolve residuals: NRE input box count (§3), exact "NRE invalid" wire signal (D28)
-- [ ] **(C)** HAR-replay harness for offline drive testing (`recon/flow.har`)
+- [x] **(M)** Scraper drive (D42): `LiveScraper` — Playwright headless Chromium through the stateful JSF flow (seed → form → **two-click** proceed/`nreButton` → epPrestazioni → "Avanti" → `altre disponibilità` → `estendi area`/`nextArea` → harvest `availableAppointmentsContainer`); browser harvests ViewState/p_auth/ice.* itself. **Confirmed working end-to-end 2026-07-04** against a real ricetta (14 slots harvested + parsed); SMOKE-CONFIRM points resolved (proceed = 2 clicks; altre-disp→estendi both fire; warning dialog absent → wait trimmed)
+- [x] **(M)** Live smoke run — both valid and dead-ricetta flows confirmed (`python -m salutebot.scraper.drive`): valid ~28–36 s/scrape (~17 s of it is the CUP loading the slots page); dead ricetta fails fast at ~4.7 s (D44)
+- [x] NRE input box count = 1, format = 15-char (§3/D42). — [x] exact "NRE invalid" wire signal (D28/D44): captured from the physical dead ricetta — the banner "Impossibile recuperare la ricetta dematerializzata"; `LiveScraper` now raises `NREInvalidError` on it (raced against the confirmation, fails fast) and **D28 rotation is live**
 
 ## Phase 5 — demo / ship
 
@@ -60,4 +59,5 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 
 - [ ] **(S)** SMS via Twilio plain number; email 6-digit verification; Web-UI-ready Client seam
 - [ ] **(C)** Vertical worker-pool scaling (raise N) — gated on global rate cap; Telegram channel; change notification email/phone
+- [ ] **(C)** HAR-replay harness for offline drive testing (`recon/flow.har`) — deferred 2026-07-04: the live drive is now confirmed twice (valid + dead ricetta, D42/D44); a harness would first need a scrubbed/redacted HAR (the raw one carries real CF/NRE, correctly gitignored) and could only replay past responses, not catch future selector drift — lower value than periodic live smoke runs for the remaining time
 - [ ] **Won't (MVP):** auto-booking · real Web UI · custom SMS sender-ID · slot field filters
