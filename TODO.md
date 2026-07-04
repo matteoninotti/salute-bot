@@ -34,6 +34,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)**
 - [x] **(M)** Self-clocking serial loop (D21/D22/D27): non-dormant sweep, N=1, 2-min per-prestazione floor (advances on every *attempt* so a failing scrape can't busy-loop), scrape→detect→fan-out; sleeps exactly until next-due
 - [x] **(M)** Representative-NRE lifecycle (D28): first active target drives; rotate on permanent NRE-invalid (deactivate + email owner in Italian), retry next subscriber; prestazione dormant if none valid
 - [x] **(M)** Robustness (D11): in-attempt retry + exponential backoff on transient `ScrapeError`; N=3 consecutive failed cycles → subscribers notified; dead-man heartbeat emitted + stale-check/broadcast primitives (external checker wiring → Phase 5)
+- [x] **(M)** Fan-out partial-failure fix (D38, amends D36): persist on ≥1 delivered (kills the one-dead-mailbox spam loop); bounded inline per-recipient send retry + backoff; abandoned recipients surfaced in `FanOutResult.failed`; total-failure batch stays unpersisted (self-heal)
 - [ ] **(M)** `--check-now` end-to-end (D24/D26/D25): CLI-owned cooldown + block-poll; daemon serving via the two `users` timestamps; two-tier queue (check-now lane ahead of sweep) + per-prestazione coalescing (D25)  _(moved from Phase 2 — needs the daemon)_
 - [ ] **(M)** New-user registration + add-prestazione (D14): daemon-driven acknowledgment scrape (NRE→prestazione + initial slots); pin the CLI→daemon request mechanism  _(moved from Phase 2 — needs the daemon, D27)_
 

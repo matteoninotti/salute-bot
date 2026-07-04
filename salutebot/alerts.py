@@ -12,18 +12,22 @@ Three parts, kept separate for testability:
     fake and CI drives LocalStack; a real-AWS smoke to a verified address stays a
     separate check (D15).
   - `fan_out` -- orchestration: resolve the prestazione's active subscribers
-    (`targets -> users`, D20), send to each, and **only on a fully successful
-    batch** persist the new slots (D36). A send failure leaves them unpersisted,
-    so the next sweep re-detects and re-attempts -- at-least-once, trading a rare
-    duplicate for never silently dropping the one alert the tool exists to send.
+    (`targets -> users`, D20), send to each with a bounded per-recipient retry,
+    and persist the new slots **once at least one recipient was delivered**
+    (D38, refining D36). A recipient still failing after its retries is
+    abandoned and surfaced in `FanOutResult.failed`; only a **total** failure
+    (zero delivered) leaves the slots unpersisted, so the next sweep re-detects
+    and retries the whole batch -- at-least-once for outages, without spamming
+    the good recipients to chase one dead mailbox.
 
 Recipient addresses are ordinary contact data, not CF/NRE secrets, so they may
 appear in a message; no CF/NRE ever passes through here.
 """
 
 import os
+import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import escape
 from typing import Any, Protocol, cast
 
@@ -32,6 +36,13 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from salutebot.models import DetectionResult, Slot
 from salutebot.store import Store
+
+# Per-recipient send retry (D38, D11-style). A transient SES/transport error on
+# one recipient is retried up to this many times with exponential backoff, inside
+# the same fan-out; a recipient still failing after them is abandoned (a dead
+# mailbox is unreachable — chasing it must not re-alert the others).
+SEND_RETRY_ATTEMPTS = 3
+SEND_RETRY_BACKOFF_BASE = 1.0
 
 
 
@@ -60,15 +71,21 @@ class EmailContent:
 class FanOutResult:
     """Outcome of one prestazione's fan-out. DTO carve-out (frozen data-carrier).
 
-    `persisted` is the load-bearing field: True means every recipient's send
-    succeeded and the new slots were recorded (D36); False means either there was
-    nothing to send or a send failed, so the new slots stay unpersisted for the
-    next sweep to retry.
+    `persisted` is the load-bearing field (D38): True means at least one recipient
+    was delivered and the new slots were recorded — good recipients are therefore
+    never re-alerted. False means either there was nothing to send or the batch
+    was a *total* failure (zero delivered), so the new slots stay unpersisted for
+    the next sweep to re-detect and retry.
+
+    `sent` counts delivered recipients; `failed` names the recipients that were
+    abandoned after their per-recipient retries (a dead mailbox) — surfaced but
+    not yet escalated (D38 residual).
     """
 
     recipients: int
     sent: int
     persisted: bool
+    failed: tuple[str, ...] = field(default_factory=tuple)
 
 
 
@@ -157,15 +174,19 @@ class SesMailer:
 def fan_out(store: Store,
             mailer: Mailer,
             result: DetectionResult,
-            now: float | None = None) -> FanOutResult:
-    """Email every active subscriber of the prestazione, then persist (D20/D36).
+            now: float | None = None,
+            *,
+            sleep=time.sleep) -> FanOutResult:
+    """Email every active subscriber of the prestazione, then persist (D20/D38).
 
-    Ordering is D36's at-least-once: send first, record the new slots only if the
-    whole batch succeeded. On any send failure nothing is persisted, so the next
-    sweep re-detects the same keys and retries (recipients who already got the
-    mail receive a bounded duplicate -- accepted over a lost alert). Per-recipient
-    retry/backoff and the failure-notification are the daemon's job (D11), not
-    this function's.
+    Send each recipient with a bounded per-recipient retry (`_send_with_retry`),
+    then persist the new slots **once at least one recipient was delivered** (D38):
+    good recipients are recorded as alerted and never re-emailed, while a recipient
+    still failing after its retries is abandoned and returned in `failed`. Only a
+    *total* failure (zero delivered — a systemic SES outage, not one dead mailbox)
+    leaves the slots unpersisted, so the next sweep re-detects and retries the
+    whole batch (D36's outage self-heal, preserved). `sleep` is injected so the
+    retry backoff is testable.
     """
     if not result.has_new:
         return FanOutResult(recipients=0, sent=0, persisted=False)
@@ -177,23 +198,38 @@ def fan_out(store: Store,
         return FanOutResult(recipients=0, sent=0, persisted=False)
 
     content = render_alert(result)
-    sent = 0
-    failed = False
+    delivered = 0
+    failed: list[str] = []
     for addr in recipients:
+        if _send_with_retry(mailer, addr, content, sleep):
+            delivered += 1
+        else:
+            failed.append(addr)
+
+    persisted = delivered > 0
+    if persisted:
+        store.record_new_slots(result.prestazione, result.new_slots, now)  # D38
+    return FanOutResult(recipients=len(recipients), sent=delivered,
+                        persisted=persisted, failed=tuple(failed))
+
+
+def _send_with_retry(mailer: Mailer, addr: str, content: EmailContent, sleep) -> bool:
+    """Send one recipient with bounded retry + exponential backoff (D38/D11).
+
+    Returns True on delivery, False if every attempt raised `MailerError` (the
+    recipient is then abandoned by the caller). Mirrors the scraper's
+    `_scrape_with_retry` shape so the two robustness layers read the same."""
+    delay = SEND_RETRY_BACKOFF_BASE
+    for attempt in range(SEND_RETRY_ATTEMPTS):
         try:
             mailer.send(addr, content)
-            sent += 1
+            return True
         except MailerError:
-            failed = True
-
-    if failed:
-        return FanOutResult(recipients=len(recipients),
-                            sent=sent,
-                            persisted=False)
-
-    store.record_new_slots(result.prestazione, result.new_slots,
-                           now)  # post-send (D36)
-    return FanOutResult(recipients=len(recipients), sent=sent, persisted=True)
+            if attempt == SEND_RETRY_ATTEMPTS - 1:
+                return False
+            sleep(delay)
+            delay *= 2
+    return False
 
 
 

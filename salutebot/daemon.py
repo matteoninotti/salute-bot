@@ -107,7 +107,7 @@ def process_prestazione(
     first scrape, so a failure/crash still counts against the 2-min floor and the
     loop can never busy-scrape a broken prestazione. A prestazione with no active
     credential at all is dormant and marks nothing. On success, detection (D8) +
-    fan-out (D32/D36) run. The `transient_error` status feeds the across-sweep
+    fan-out (D32/D36/D38) run. The `transient_error` status feeds the across-sweep
     consecutive-failure counter in `run_sweep` (N=3 → notify, D11).
     """
     marked = False
@@ -132,7 +132,7 @@ def process_prestazione(
             return "transient_error"  # retries exhausted this cycle (D11)
         detection = detect_new_slots(store, code, result.slots, now)
         if detection.has_new:
-            fan_out(store, mailer, detection, now)
+            fan_out(store, mailer, detection, now, sleep=sleep)  # per-recipient retry (D38)
         return "ok"
 
 

@@ -2,14 +2,16 @@
 
 One cycle, for one prestazione: `new = current_keys - known_keys`, computed in
 memory (D8). This module **detects only** -- it does not persist newly-seen
-slots. Per D36 (at-least-once alerting) a new slot's row is written *after* a
-successful alert send, not before, so persistence of the new keys is the alert
-fan-out's job (`store.record_new_slots`, called post-send). What detection does
-touch is `last_seen` on keys that are still present: that bump is auxiliary and
-independent of alerting (D36), so it happens every cycle regardless of send
-outcome. Keys that disappeared are left untouched, and a later reappearance is
-read back from `known_slot_keys` as already-known once it has been persisted, so
-it is never re-alerted (D8).
+slots. Per D36/D38 (at-least-once alerting) a new slot's row is written by the
+fan-out *after* dispatch, once at least one recipient was delivered (D38) --
+never by the detector. So a slot only re-surfaces here as "new" on the next
+sweep when the whole batch failed to deliver to anyone (D38's total-failure
+self-heal); a partially-delivered batch is already persisted and won't re-alert.
+What detection does touch is `last_seen` on keys that are still present: that
+bump is auxiliary and independent of alerting (D36), so it happens every cycle
+regardless of send outcome. Keys that disappeared are left untouched, and a
+later reappearance is read back from `known_slot_keys` as already-known once it
+has been persisted, so it is never re-alerted (D8).
 
 `slots` is the de-dup memory **per prestazione**, not per user (D20): a slot
 found via any subscriber's scrape is detected, alerted, and stored exactly once
@@ -49,6 +51,6 @@ def detect_new_slots(
         if key in known:
             store.touch_slot(code, key, now)  # last_seen bump, independent of alerting (D36)
         else:
-            new_slots.append(slot)  # NOT persisted here -- fan-out records post-send (D36)
+            new_slots.append(slot)  # NOT persisted here -- fan-out records post-dispatch (D36/D38)
 
     return DetectionResult(prestazione=code, all_slots=current, new_slots=new_slots)

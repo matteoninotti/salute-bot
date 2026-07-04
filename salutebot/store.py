@@ -198,11 +198,12 @@ class Store:
     def record_new_slots(self, code: str, slots: list[Slot], now: float | None = None) -> None:
         """Persist a batch of newly-alerted slots in one transaction (D8).
 
-        Called by the alert fan-out **only after a successful send** (at-least-once,
-        D36): if the send fails these rows stay unwritten, so the next sweep
-        re-detects the same keys as new and re-attempts the alert. One commit keeps
+        Called by the alert fan-out **once at least one recipient was delivered**
+        (D38, refining D36): a partially-delivered batch is recorded so the good
+        recipients are never re-alerted; only a total-failure batch stays unwritten,
+        so the next sweep re-detects the same keys and retries (D38). One commit keeps
         the batch atomic — a crash mid-batch leaves the un-inserted keys to re-alert
-        next cycle (a bounded duplicate, accepted over a lost alert, D36)."""
+        next cycle (a bounded duplicate, accepted over a lost alert)."""
         ts = time.time() if now is None else now
         for slot in slots:
             self.__insert_slot(code, slot, ts)

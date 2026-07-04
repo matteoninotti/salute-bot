@@ -91,22 +91,64 @@ def test_fan_out_sends_to_all_active_subscribers_and_persists(store):
     out = fan_out(store, mailer, result, now=1000.0)
 
     assert out.persisted is True
-    assert out.sent == 2
+    assert out.sent == 2 and out.failed == ()
     assert {addr for addr, _ in mailer.sent} == {"a@b.it", "c@d.it"}
-    assert store.known_slot_keys(_CODE) == {new.slot_key}  # recorded AFTER send (D36)
+    assert store.known_slot_keys(_CODE) == {new.slot_key}  # recorded AFTER send (D36/D38)
 
 
-def test_fan_out_does_not_persist_when_a_send_fails(store):
+def test_fan_out_persists_on_partial_delivery_and_abandons_the_failer(store):
+    # D38: A delivers, B (c@d.it) permanently bounces -> persist anyway (A is never
+    # re-alerted), B is abandoned into `failed`, not chased by re-alerting everyone.
     store.add_user("BNCLGU80A01L219T", "c@d.it")
     store.add_target("BNCLGU80A01L219T", _PREST, "2222222222222222")
     new = _slot("2026-06-25", "08:00")
     result = DetectionResult(prestazione=_CODE, all_slots=[new], new_slots=[new])
     mailer = _FakeMailer(fail_on={"c@d.it"})
 
-    out = fan_out(store, mailer, result, now=1000.0)
+    out = fan_out(store, mailer, result, now=1000.0, sleep=lambda _s: None)
 
-    assert out.persisted is False  # D36: batch incomplete -> nothing recorded
-    assert store.known_slot_keys(_CODE) == set()  # so the next sweep re-alerts
+    assert out.persisted is True                       # >=1 delivered -> recorded (D38)
+    assert out.sent == 1 and out.failed == ("c@d.it",)  # A delivered, B abandoned
+    assert store.known_slot_keys(_CODE) == {new.slot_key}  # so A is not re-alerted
+
+
+def test_fan_out_total_failure_does_not_persist(store):
+    # D38: every recipient fails (systemic outage) -> nothing persisted, so the
+    # next sweep re-detects and retries the whole batch (D36 self-heal preserved).
+    new = _slot("2026-06-25", "08:00")
+    result = DetectionResult(prestazione=_CODE, all_slots=[new], new_slots=[new])
+    mailer = _FakeMailer(fail_on={"a@b.it"})
+
+    out = fan_out(store, mailer, result, now=1000.0, sleep=lambda _s: None)
+
+    assert out.persisted is False
+    assert out.sent == 0 and out.failed == ("a@b.it",)
+    assert store.known_slot_keys(_CODE) == set()
+
+
+def test_fan_out_retries_a_recipient_that_recovers(store):
+    # D38: a recipient that fails once then succeeds is delivered within the same
+    # fan-out (bounded retry + backoff), not abandoned.
+    class _FlakyMailer:
+        def __init__(self):
+            self.attempts = 0
+            self.delivered: list[str] = []
+
+        def send(self, to_addr, content):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise MailerError("blip")
+            self.delivered.append(to_addr)
+
+    new = _slot("2026-06-25", "08:00")
+    result = DetectionResult(prestazione=_CODE, all_slots=[new], new_slots=[new])
+    mailer = _FlakyMailer()
+
+    out = fan_out(store, mailer, result, now=1000.0, sleep=lambda _s: None)
+
+    assert mailer.attempts == 2                 # failed once, retried, delivered
+    assert out.persisted is True and out.failed == ()
+    assert store.known_slot_keys(_CODE) == {new.slot_key}
 
 
 def test_fan_out_no_new_slots_is_a_noop(store):

@@ -102,9 +102,10 @@ class DetectionResult:
     so both lists are carried, not just the diff:
         prestazione -- the code this cycle covers (D19: the grouping/de-dup unit)
         all_slots   -- every slot visible in this scrape, in page order
-        new_slots   -- the subset of `all_slots` that is newly-seen this cycle
-                       (already persisted with `first_seen = now` by the
-                       detector, per D8) -- empty means "nothing to alert on"
+        new_slots   -- the subset of `all_slots` that is newly-seen this cycle;
+                       NOT persisted by the detector -- per D36 the alert fan-out
+                       records these rows (`first_seen = now`) only after a
+                       successful send -- empty means "nothing to alert on"
     """
 
     prestazione: str
