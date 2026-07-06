@@ -1,4 +1,4 @@
-# salute-bot — operating notes for Claude
+# salute-bot — operating notes for Claude/Codex (if this is the symlink called "AGENTS.md")
 
 Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fiscale + NRE). Watches the public booking flow headlessly and **notifies the moment a slot opens**. No auto-booking in the MVP. Multi-user from day one. **Deadline: 2026-07-04.** School project (ITS ICT, Python class).
 
