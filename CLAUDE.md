@@ -1,21 +1,21 @@
 # salute-bot — operating notes for Claude/Codex (if this is the symlink called "AGENTS.md")
 
-Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fiscale + NRE). Watches the public booking flow headlessly and **notifies the moment a slot opens**. No auto-booking in the MVP. Multi-user from day one. **Deadline: 2026-07-04.** School project (ITS ICT, Python class).
+Alert-first slot-watcher for the Piemonte SSN **CUP** no-login flow (Codice Fiscale + NRE). Watches the public booking flow headlessly and **notifies the moment a slot opens**. No auto-booking in the MVP. Multi-user from day one. **Personal project** (no deadline) — originally an ITS ICT Python-class exam project; the exam was submitted separately on 2026-07-04 (a different project), so salute-bot is now developed for its own sake. The Python-class conventions below are **kept by choice** (see D47).
 
 > This file is a thin pointer + the essentials needed to work in-repo. The old PRD and decision log were **discarded** (drifted out of alignment); both have since been **rebuilt**: the decision log (`salute-bot-log.md` — the live decision record) and the PRD (`salute-bot-prd.md`, rebuilt 2026-07-02 from the log + the feasibility). The log holds the full history + rationale.
 
 ## Canonical docs (vault — not in this repo)
 
-- Feasibility (IT, for submission): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-feasibility_v2.md`
+- Feasibility (IT, originally drafted for the exam submission — now a historical spec, not a live submission artifact): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-feasibility_v2.md`
 - PRD / build spec: `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-prd.md` — **rebuilt 2026-07-02** (D31) from the log's decisions + the feasibility. A synthesis, not a new source of truth — every requirement in it cites the `D#` that authorizes it. It is a **bureaucratic/submission artifact**, not a build reference: it is allowed to go stale between periodic realignment passes, and **must never be read as authority for code or architecture** — only `salute-bot-log.md` is.
 - Recon + decision log (live history): `/Users/matteo/Library/CloudStorage/OneDrive-Personal/Documenti/my_vault/ITS/python/salute-bot-project/salute-bot-log.md` — **rebuilt 2026-06-15**: §1 recon · §2 decisions · §3 open questions. The single source of truth for specs, architecture, and rationale — CLAUDE.md and the PRD both just point here.
 
 ## How to work here (hard guardrails)
 
-- **Build mode (active 2026-07-01, deadline crunch).** Work autonomously in module-sized batches, commit at each boundary, tests green before moving on.
+- **Build mode (active 2026-07-01).** Work autonomously in module-sized batches, commit at each boundary, tests green before moving on. (Retained by choice now that it's a personal project — D47.)
 - **keep the responses brief** 1 sentence min, 6 sentences max
-- **Python at the core is a hard requirement** (it's a Python class).
-- **Encapsulation: attributes are private by default.** Every attribute must be private (name-mangled `__attr`) except where it _explicitly_ needs to be protected (`_attr`) or public — and any such exception is justified case by case, never granted by category. _This is a **professor requirement** for the Python project, not a stylistic preference._
+- **Python at the core is a hard requirement** (retained convention — the project started as a Python-class exercise and stays Python-centric by choice, D47).
+- **Encapsulation: attributes are private by default.** Every attribute must be private (name-mangled `__attr`) except where it _explicitly_ needs to be protected (`_attr`) or public — and any such exception is justified case by case, never granted by category. _Originally a **professor requirement**; **kept as a project convention** (D47), not a stylistic afterthought._
 - **Internal functions get a leading underscore.** Only a module's public API (what callers are meant to import) stays unprefixed; every internal helper is named `_helper`. The function-level counterpart of the private-by-default attribute rule.
 - **No `from __future__ import annotations`.** We target Python 3.14, which defers annotation evaluation by default (PEP 649), so the import is redundant — don't add it.
 - **Secrets (CF/NRE) never appear in chat, code, or logs.** They're persisted **encrypted at rest in SQLite**; the encryption key comes from **env only** (never committed, never stored in the DB).

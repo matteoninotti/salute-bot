@@ -1,6 +1,6 @@
 # salute-bot — project TODO
 
-Shared build tracker (Matteo + Claude). Ordered by build strategy **D** (parse-half tested first → deterministic core → live drive last), tagged by MoSCoW. Decision IDs (`D#`) point to `salute-bot-log.md`. **Deadline: 2026-07-04.**
+Shared build tracker (Matteo + Claude). Ordered by build strategy **D** (parse-half tested first → deterministic core → live drive last), tagged by MoSCoW. Decision IDs (`D#`) point to `salute-bot-log.md`. **No deadline** — personal project since 2026-07-06 (the exam was submitted separately, D47); MoSCoW tags are now priority hints, not release gates.
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(M)** Must · **(S)** Should · **(C)** Could
 
