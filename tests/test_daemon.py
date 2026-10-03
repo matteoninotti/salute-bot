@@ -12,10 +12,12 @@ from salutebot.daemon import DaemonAlreadyRunningError, single_instance_lock
 
 def test_lock_blocks_a_second_holder(tmp_path):
     lock = str(tmp_path / "salute-bot.lock")
-    with single_instance_lock(lock):
-        with pytest.raises(DaemonAlreadyRunningError):
-            with single_instance_lock(lock):
-                pass
+    with (
+        single_instance_lock(lock),
+        pytest.raises(DaemonAlreadyRunningError),
+        single_instance_lock(lock),
+    ):
+        pass
 
 
 def test_lock_is_released_after_the_block(tmp_path):
@@ -28,6 +30,5 @@ def test_lock_is_released_after_the_block(tmp_path):
 
 
 def test_distinct_lockfiles_do_not_contend(tmp_path):
-    with single_instance_lock(str(tmp_path / "a.lock")):
-        with single_instance_lock(str(tmp_path / "b.lock")):
-            pass
+    with single_instance_lock(str(tmp_path / "a.lock")), single_instance_lock(str(tmp_path / "b.lock")):
+        pass

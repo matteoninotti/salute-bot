@@ -8,7 +8,7 @@ distinct, typed, and both non-fatal to catch.
 import pytest
 
 from salutebot.models import Prestazione, Slot
-from salutebot.scraper.base import NREInvalidError, Scraper, ScrapeError, ScrapeResult
+from salutebot.scraper.base import NREInvalidError, ScrapeError, Scraper, ScrapeResult
 
 _PREST = Prestazione(code="8901.20", descrizione="VISITA UROLOGICA DI CONTROLLO", quantita=1)
 

@@ -26,7 +26,7 @@ from salutebot.alerts import (
     render_watch_failing_notice,
 )
 from salutebot.detector import detect_new_slots
-from salutebot.scraper.base import NREInvalidError, Scraper, ScrapeError, ScrapeResult
+from salutebot.scraper.base import NREInvalidError, ScrapeError, Scraper, ScrapeResult
 from salutebot.store import Store
 
 _DEFAULT_LOCK_PATH = "/tmp/salute-bot.lock"
@@ -34,7 +34,7 @@ _DEFAULT_HEARTBEAT_PATH = "/tmp/salute-bot.heartbeat"
 _HEARTBEAT_PATH_VAR = "SALUTEBOT_HEARTBEAT"
 
 
-def resolve_heartbeat_path(env: "os._Environ | dict[str, str] | None" = None) -> str:
+def resolve_heartbeat_path(env: os._Environ | dict[str, str] | None = None) -> str:
     """The heartbeat file location, `SALUTEBOT_HEARTBEAT`-overridable (D11).
 
     Shared by the daemon (which writes it) and the CLI (which reads it to tell

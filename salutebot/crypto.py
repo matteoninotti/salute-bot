@@ -40,7 +40,7 @@ class Crypto:
         self.__hmac_key = hmac_key.encode("utf-8")
 
     @classmethod
-    def from_env(cls, config: EnvConfig) -> "Crypto":
+    def from_env(cls, config: EnvConfig) -> Crypto:
         return cls(config.enc_key, config.hmac_key)
 
     def hash_cf(self, cf: str) -> str:

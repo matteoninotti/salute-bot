@@ -12,7 +12,6 @@ from cryptography.fernet import Fernet
 
 from salutebot.crypto import Crypto
 from salutebot.models import Prestazione, Slot
-
 from salutebot.store import Store
 
 _CF = "RSSMRA85T10A562S"

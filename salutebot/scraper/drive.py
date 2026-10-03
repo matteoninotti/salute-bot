@@ -30,6 +30,7 @@ import sys
 import time
 from collections.abc import Mapping
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
@@ -58,10 +59,10 @@ _CONFIRM_ROW = ".prestazioneRow"                             # confirmation pars
 # The permanent invalid/expired/consumed-ricetta signal (D28), captured live from a
 # known-dead ricetta: a page-level banner "Impossibile recuperare la ricetta
 # dematerializzata" (NOT the field-level nreError0/cfError spans). Matched by text.
-_INVALID_RICETTA_RE = re.compile(r"impossibile recuperare la ricetta", re.I)
+_INVALID_RICETTA_RE = re.compile(r"impossibile recuperare la ricetta", re.IGNORECASE)
 # "altre disponibilità" is a positional j_idt button (id renumbers per render, HAR
 # source `_t385`), so it is matched by its visible label, not its id (SMOKE-CONFIRM).
-_MORE_AVAIL_RE = re.compile(r"altre disponibilit", re.I)
+_MORE_AVAIL_RE = re.compile(r"altre disponibilit", re.IGNORECASE)
 _SLOT_CARD = "div.disponibiliPanel"                          # one slot card (what the parser reads)
 # Short settle between the two proceed clicks — long enough for the ICEfaces input
 # validation to finish, short enough not to reintroduce the old ~30 s wait.
@@ -98,7 +99,7 @@ class LiveScraper:
         self.__t_last = 0.0   # previous debug line's timestamp (for the per-step delta)
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> "LiveScraper":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> LiveScraper:
         """Build from env: `SALUTEBOT_HEADFUL` (truthy → show the browser);
         `SALUTEBOT_SCRAPE_TIMEOUT` (seconds, default 60); `SALUTEBOT_DEBUG` (truthy →
         print flow diagnostics to stderr — button clicks + card counts, never secrets)."""
@@ -210,7 +211,7 @@ class LiveScraper:
         for element_id in (_NRE_ERROR, _CF_ERROR):
             try:
                 text = page.locator(_sel(element_id)).inner_text(timeout=1000).strip()
-            except Exception:
+            except PlaywrightError:
                 text = ""
             if text:
                 parts.append(text)

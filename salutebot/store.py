@@ -10,6 +10,7 @@ the caller supplies `now` (default `time.time()`) so tests stay deterministic.
 import sqlite3
 import time
 from pathlib import Path
+from typing import Self
 
 from salutebot.crypto import Crypto
 from salutebot.models import Prestazione, Slot
@@ -33,7 +34,7 @@ class Store:
     def close(self) -> None:
         self.__conn.close()
 
-    def __enter__(self) -> "Store":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:

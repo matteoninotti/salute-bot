@@ -50,7 +50,7 @@ class FixtureScraper:
 
     @classmethod
     def from_recon(cls, *, baseline: int = 4, added: int = 1,
-                   dead_nres: Iterable[str] = ()) -> "FixtureScraper":
+                   dead_nres: Iterable[str] = ()) -> FixtureScraper:
         """Build from the real redacted recon captures (log §3 demo fixture).
 
         Parses the captured confirmation + slots pages with the production parsers,
